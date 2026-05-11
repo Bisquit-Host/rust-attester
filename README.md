@@ -12,7 +12,7 @@ App Attest service built with Rust and Axum
 ## Optional Environment Props
 
 - `HOST` defaults to `0.0.0.0`
-- `PORT` defaults to `1992`
+- `PORT` defaults to `1993`
 
 ## Routes
 

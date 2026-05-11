@@ -26,7 +26,7 @@ impl Config {
         let bearer_key = required_env("BEARER_KEY")?;
 
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-        let port = env::var("PORT").unwrap_or_else(|_| "1992".to_string());
+        let port = env::var("PORT").unwrap_or_else(|_| "1993".to_string());
         let address = format!("{host}:{port}")
             .parse()
             .map_err(|_| ConfigError::InvalidAddress)?;

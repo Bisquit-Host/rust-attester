@@ -26,6 +26,6 @@ WORKDIR /app
 COPY --from=build /usr/local/bin/rust-attester /app/rust-attester
 
 USER attester:attester
-EXPOSE 1992
+EXPOSE 1993
 
 ENTRYPOINT ["./rust-attester"]
