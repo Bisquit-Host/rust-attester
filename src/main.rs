@@ -43,6 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new()
         .route("/ping", get(ping))
+        .route("/health", get(ping))
         .route("/challenge", post(challenge))
         .route("/attest", post(attest))
         .route("/assert", post(assertion))
