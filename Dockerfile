@@ -7,6 +7,7 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock* ./
 COPY vendor ./vendor
 COPY src ./src
+COPY migrations ./migrations
 
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \

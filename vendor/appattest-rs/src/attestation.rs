@@ -95,11 +95,10 @@ impl Attestation {
         }
     
         let mut context = X509StoreContext::new()?;
-        context.init(&store, &certs[0], &cert_chain, |ctx| {
-            ctx.verify_cert()?;
-            Ok(())
-        })?;
-
+        let verified = context.init(&store, &certs[0], &cert_chain, |ctx| ctx.verify_cert())?;
+        if !verified {
+            return Err(AppAttestError::Message("Certificate chain is not trusted".to_string()).into());
+        }
         Ok(())
     }
     // extract_nonce_from_cert extracts the nonce from the certificate
@@ -125,7 +124,9 @@ impl Attestation {
                     BerObjectContent::Unknown(unknown_obj) => {
                         // Ref: https://cs.opensource.google/go/go/+/refs/tags/go1.22.4:src/encoding/asn1/asn1.go;l=530
                         let offset: usize = 2; 
-                        return Ok(unknown_obj.data[offset..].to_vec());
+                        return unknown_obj.data.get(offset..)
+                            .map(|data| data.to_vec())
+                            .ok_or(AppAttestError::FailedToExtractValueFromASN1Node);
                     },
                     _ => continue, 
                 }
@@ -285,4 +286,29 @@ mod tests {
         let result = Attestation::verify_certificates(empty_certs, &root_cert);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn rejects_untrusted_certificate_chain() {
+        use openssl::{asn1::Asn1Time, ec::{EcGroup, EcKey}, nid::Nid, pkey::PKey, x509::X509NameBuilder};
+        fn self_signed(name: &str) -> X509 {
+            let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
+            let key = PKey::from_ec_key(EcKey::generate(&group).unwrap()).unwrap();
+            let mut subject = X509NameBuilder::new().unwrap();
+            subject.append_entry_by_text("CN", name).unwrap();
+            let subject = subject.build();
+            let mut cert = X509::builder().unwrap();
+            cert.set_version(2).unwrap();
+            cert.set_subject_name(&subject).unwrap();
+            cert.set_issuer_name(&subject).unwrap();
+            cert.set_pubkey(&key).unwrap();
+            cert.set_not_before(&Asn1Time::days_from_now(0).unwrap()).unwrap();
+            cert.set_not_after(&Asn1Time::days_from_now(1).unwrap()).unwrap();
+            cert.sign(&key, MessageDigest::sha256()).unwrap();
+            cert.build()
+        }
+        let trusted = self_signed("Trusted root");
+        let untrusted = self_signed("Attacker");
+        assert!(Attestation::verify_certificates(vec![untrusted.to_der().unwrap()], &trusted).is_err());
+    }
+
 }

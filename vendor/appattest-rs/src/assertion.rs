@@ -114,6 +114,12 @@ impl Assertion {
     }
 
     pub fn verify_bytes(self, client_data_byte: Vec<u8>, app_id: &str, public_key_byte: Vec<u8>, previous_counter: Option<u32>, received_challenge: &[u8], stored_challenge: &[u8]) -> Result<u32, Box<dyn Error>> {
+        let client_data = serde_json::from_slice::<ClientData>(&client_data_byte)?;
+        let signed_challenge = general_purpose::STANDARD.decode(&client_data.challenge)?;
+        if signed_challenge != stored_challenge || received_challenge != stored_challenge {
+            return Err(Box::new(AppAttestError::InvalidClientData));
+        }
+
         let auth_data = AuthenticatorData::new(self.raw_authenticator_data)?;
 
         let mut hasher = Sha256::new();
@@ -147,10 +153,6 @@ impl Assertion {
             _ => {}
         }
 
-        if received_challenge != stored_challenge {
-            return Err(Box::new(AppAttestError::InvalidClientData));
-        }
-
         Ok(auth_data.counter)
     }
 }
@@ -165,4 +167,52 @@ mod tests {
         let result = Assertion::from_base64(valid_cbor_base64);
         assert!(result.is_ok());
     }
+
+    fn signed_assertion(client_data: &[u8], app_id: &str, counter: u32) -> (Assertion, Vec<u8>) {
+        use p256::ecdsa::{signature::Signer, SigningKey};
+        let key = SigningKey::from_bytes((&[1u8; 32]).into()).unwrap();
+        let mut auth_data = Sha256::digest(app_id.as_bytes()).to_vec();
+        auth_data.push(0);
+        auth_data.extend(counter.to_be_bytes());
+        let mut nonce = auth_data.clone();
+        nonce.extend(Sha256::digest(client_data));
+        let signature: ecdsa::Signature = key.sign(&Sha256::digest(nonce));
+        let public_key = key.verifying_key().to_encoded_point(false).as_bytes().to_vec();
+        (Assertion { raw_authenticator_data: auth_data, signature: signature.to_der().as_bytes().to_vec() }, public_key)
+    }
+
+    #[test]
+    fn verifies_signed_challenge_and_counter() {
+        let challenge = b"issued-challenge";
+        let client_data = serde_json::to_vec(&serde_json::json!({
+            "challenge": general_purpose::STANDARD.encode(challenge)
+        })).unwrap();
+        let (assertion, key) = signed_assertion(&client_data, "team.app", 2);
+        assert_eq!(assertion.verify_bytes(client_data, "team.app", key, Some(1), challenge, challenge).unwrap(), 2);
+    }
+
+    #[test]
+    fn rejects_fresh_outer_challenge_with_replayed_signed_data() {
+        let client_data = serde_json::to_vec(&serde_json::json!({
+            "challenge": general_purpose::STANDARD.encode(b"old-challenge")
+        })).unwrap();
+        let (assertion, key) = signed_assertion(&client_data, "team.app", 2);
+        assert!(assertion.verify_bytes(client_data, "team.app", key, None, b"fresh-challenge", b"fresh-challenge").is_err());
+    }
+
+    #[test]
+    fn rejects_equal_counter_and_tampered_client_data() {
+        let challenge = b"challenge";
+        let client_data = serde_json::to_vec(&serde_json::json!({
+            "challenge": general_purpose::STANDARD.encode(challenge), "action": "login"
+        })).unwrap();
+        let (assertion, key) = signed_assertion(&client_data, "team.app", 2);
+        assert!(assertion.verify_bytes(client_data.clone(), "team.app", key, Some(2), challenge, challenge).is_err());
+        let (assertion, key) = signed_assertion(&client_data, "team.app", 2);
+        let tampered = serde_json::to_vec(&serde_json::json!({
+            "challenge": general_purpose::STANDARD.encode(challenge), "action": "delete"
+        })).unwrap();
+        assert!(assertion.verify_bytes(tampered, "team.app", key, None, challenge, challenge).is_err());
+    }
+
 }
