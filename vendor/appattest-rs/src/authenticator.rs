@@ -38,7 +38,9 @@ impl AuthenticatorData {
         }
 
         let length = BigEndian::read_u16(&self.bytes[53..55]) as usize;
-        let credential_id = self.bytes[55..55 + length].to_vec();
+        let credential_id = self.bytes.get(55..55 + length)
+            .ok_or_else(|| AppAttestError::Message("Credential data is truncated".to_string()))?
+            .to_vec();
         let aaguid = AAGUID::new(self.bytes[37..53].to_vec())?;
 
         self.credential_id = Some(credential_id);
@@ -199,4 +201,12 @@ mod tests {
         assert!(auth_data.verify_key_id(&key_id).is_ok());
         assert!(auth_data.verify_key_id(&vec![4, 3, 2, 1]).is_err());
     }
+
+    #[test]
+    fn rejects_truncated_credential_data_without_panicking() {
+        let mut bytes = vec![0; 55];
+        bytes[53..55].copy_from_slice(&100u16.to_be_bytes());
+        assert!(AuthenticatorData::new(bytes).is_err());
+    }
+
 }
