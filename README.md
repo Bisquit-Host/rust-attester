@@ -1,6 +1,6 @@
 # Rust Attester
 
-App Attest service built with Rust, Axum and PostgreSQL
+App Attest service built with Rust
 
 ## Required Environment Props
 
