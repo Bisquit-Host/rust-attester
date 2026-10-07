@@ -42,7 +42,9 @@ pub struct AttestRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AttestResponse {
     pub success: bool,
+    #[serde(rename = "userID")]
     pub user_id: Option<String>,
+    #[serde(rename = "keyID")]
     pub key_id: String,
     pub public_key: String,
 }
@@ -62,6 +64,7 @@ pub struct AssertRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AssertResponse {
     pub success: bool,
+    #[serde(rename = "userID")]
     pub user_id: Option<String>,
     pub counter: u32,
     pub action: String,
